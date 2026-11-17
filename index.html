@@ -87,6 +87,7 @@
   .sum-rate{text-align:right; line-height:1;}
   .sum-rate .l{font-size:10.5px; font-weight:800; letter-spacing:.08em; opacity:.9;}
   .sum-rate .v{font-size:30px; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:-.02em;}
+  .sum-rate .v.nodata{letter-spacing:.04em; opacity:.92;}
   .sum-rate .v small{font-size:14px; font-weight:800; margin-left:1px;}
 
   /* add deck */
@@ -110,6 +111,7 @@
   .deck-name{font-size:16.5px; font-weight:900; letter-spacing:.01em; line-height:1.3; word-break:break-word; padding-top:2px;}
   .deck-rate{text-align:right; line-height:1; flex:0 0 auto;}
   .deck-rate .v{font-size:27px; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--blue);}
+  .deck-rate .v.nodata{letter-spacing:.04em; color:#aab6cc;}
   .deck-rate .v.mid{color:#f0a020;}
   .deck-rate .v.low{color:var(--lose);}
   .deck-rate .v small{font-size:12px; font-weight:800; margin-left:1px;}
@@ -406,6 +408,7 @@
     el.sumL.textContent = t.l + '敗';
     el.sumD.textContent = t.d + '分';
     el.sumRate.textContent = rateText(t.w, t.games);
+    el.sumRate.classList.toggle('nodata', t.games === 0);
     el.sumDecks.textContent = state.decks.length + 'デッキ';
     el.undoBtn.disabled = state.undo.length === 0;
 
@@ -426,7 +429,7 @@
           '<div class="deck-top">' +
             '<div class="deck-name">' + esc(deck.name) + '</div>' +
             '<div class="deck-rate">' +
-              '<span class="v ' + rateClass(deck.w, g) + '">' + rateText(deck.w, g) + '<small>%</small></span>' +
+              '<span class="v ' + rateClass(deck.w, g) + (g === 0 ? ' nodata' : '') + '">' + rateText(deck.w, g) + '<small>%</small></span>' +
               '<span class="l">勝率</span>' +
             '</div>' +
           '</div>' +
