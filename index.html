@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2b6cf6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ポケポケ勝率">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="ポケモンカードゲームPocket（ポケポケ）のデッキ別 戦績・勝率カウンター。勝ち・負け・引き分けを1タップで記録、勝率を自動計算します。">
+<title>ポケポケ 勝率カウンター</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png" type="image/png">
+<style>
+  :root{
+    --bg:#eef3ff;
+    --ink:#0e1b3a;
+    --ink2:#4c5c7c;
+    --muted:#8494b0;
+    --card:#ffffff;
+    --line:#e4ebf8;
+    --blue:#2b6cf6;
+    --blue-d:#1d55d0;
+    --win:#10b981;
+    --win-d:#0a9c6c;
+    --lose:#ff5a67;
+    --lose-d:#e63f4d;
+    --draw:#8a9ab6;
+    --draw-d:#708099;
+    --radius:22px;
+    --shadow:0 8px 22px rgba(16,32,70,.08), 0 1px 3px rgba(16,32,70,.06);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",system-ui,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(900px 420px at 50% -160px, #d9e6ff 0%, rgba(217,230,255,0) 70%),
+      radial-gradient(600px 300px at 110% 8%, #fff0c9 0%, rgba(255,240,201,0) 60%),
+      linear-gradient(#f5f8ff, #e9f0ff 70%, #eef3ff);
+    background-attachment:fixed;
+    -webkit-text-size-adjust:100%;
+    line-height:1.5;
+    min-height:100vh;
+    overscroll-behavior-y:contain;
+  }
+  .wrap{max-width:520px; margin:0 auto; padding:0 14px calc(30px + env(safe-area-inset-bottom));}
+
+  /* header */
+  .head{position:sticky; top:0; z-index:30; padding:10px 0 8px;
+        background:linear-gradient(to bottom, rgba(238,243,255,.97) 60%, rgba(238,243,255,.72));
+        backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+        border-bottom:1px solid rgba(228,235,248,.9);}
+  .head-in{max-width:520px; margin:0 auto; padding:0 14px; display:flex; align-items:center; gap:10px;}
+  .logo{flex:1 1 auto; min-width:0;}
+  .logo h1{font-size:16.5px; margin:0; letter-spacing:.01em; display:flex; align-items:center; gap:6px; white-space:nowrap;}
+  .logo h1 .ball{width:18px; height:18px; border-radius:50%; flex:0 0 auto;
+        background:linear-gradient(180deg,#ff5a67 0 47%,#ffffff 47% 53%,#2b6cf6 53% 100%);
+        border:2px solid #14224a; position:relative;}
+  .logo h1 .ball::after{content:""; position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px;
+        border-radius:50%; background:#fff; border:1.5px solid #14224a;}
+  .logo .sub{font-size:11px; color:var(--muted); margin:2px 0 0 24px; letter-spacing:.02em;}
+  .undo{flex:0 0 auto; border:1px solid var(--line); background:#fff; color:var(--ink2);
+        border-radius:999px; padding:9px 13px; font-size:12.5px; font-weight:800; cursor:pointer;
+        box-shadow:0 2px 6px rgba(16,32,70,.06); transition:transform .1s ease, opacity .15s ease;}
+  .undo:active{transform:scale(.97);}
+  .undo:disabled{opacity:.38; box-shadow:none; cursor:default;}
+
+  /* summary */
+  .summary{margin-top:12px; background:linear-gradient(135deg,#2b6cf6 0%,#4f8bff 55%,#7aa9ff 100%);
+           border-radius:var(--radius); padding:14px 16px 13px; color:#fff; box-shadow:0 12px 26px rgba(43,108,246,.28);
+           position:relative; overflow:hidden;}
+  .summary::after{content:""; position:absolute; right:-30px; top:-40px; width:150px; height:150px; border-radius:50%;
+           background:rgba(255,255,255,.13);}
+  .sum-top{display:flex; align-items:baseline; justify-content:space-between; gap:8px; position:relative;}
+  .sum-title{font-size:12.5px; font-weight:800; letter-spacing:.06em; opacity:.95;}
+  .sum-decks{font-size:11px; font-weight:700; background:rgba(255,255,255,.2); border-radius:999px; padding:3px 9px;}
+  .sum-body{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:6px; position:relative;}
+  .sum-games{display:flex; align-items:baseline; gap:3px;}
+  .sum-games b{font-size:38px; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.02em;}
+  .sum-games span{font-size:13px; font-weight:800; opacity:.9; padding-bottom:3px;}
+  .sum-split{display:flex; gap:6px; margin-top:7px; font-size:11.5px; font-weight:800; flex-wrap:wrap;}
+  .sum-split i{font-style:normal; background:rgba(255,255,255,.18); border-radius:8px; padding:2px 7px; font-variant-numeric:tabular-nums;}
+  .sum-rate{text-align:right; line-height:1;}
+  .sum-rate .l{font-size:10.5px; font-weight:800; letter-spacing:.08em; opacity:.9;}
+  .sum-rate .v{font-size:30px; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:-.02em;}
+  .sum-rate .v small{font-size:14px; font-weight:800; margin-left:1px;}
+
+  /* add deck */
+  .add{margin-top:12px; display:flex; gap:8px;}
+  .add input{flex:1 1 auto; min-width:0; border:1px solid var(--line); background:#fff; border-radius:16px;
+             padding:14px 14px; font-size:16px; font-family:inherit; color:var(--ink); outline:none;
+             box-shadow:0 2px 8px rgba(16,32,70,.05);}
+  .add input::placeholder{color:#a9b6cd;}
+  .add input:focus{border-color:var(--blue); box-shadow:0 0 0 3px rgba(43,108,246,.15);}
+  .add button{flex:0 0 auto; border:0; border-radius:16px; padding:0 16px; font-size:14px; font-weight:900; color:#fff;
+              background:linear-gradient(135deg,var(--blue),#5a94ff); box-shadow:0 8px 18px rgba(43,108,246,.3);
+              cursor:pointer; transition:transform .1s ease; letter-spacing:.02em; font-family:inherit;}
+  .add button:active{transform:scale(.97);}
+
+  /* deck list */
+  .list{margin-top:12px; display:flex; flex-direction:column; gap:12px;}
+  .deck{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 14px 12px;
+        border:1px solid rgba(255,255,255,.9); animation:pop .2s ease;}
+  @keyframes pop{from{opacity:0; transform:translateY(6px) scale(.995);} to{opacity:1; transform:none;}}
+  .deck-top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+  .deck-name{font-size:16.5px; font-weight:900; letter-spacing:.01em; line-height:1.3; word-break:break-word; padding-top:2px;}
+  .deck-rate{text-align:right; line-height:1; flex:0 0 auto;}
+  .deck-rate .v{font-size:27px; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--blue);}
+  .deck-rate .v.mid{color:#f0a020;}
+  .deck-rate .v.low{color:var(--lose);}
+  .deck-rate .v small{font-size:12px; font-weight:800; margin-left:1px;}
+  .deck-rate .l{display:block; font-size:10px; font-weight:800; color:var(--muted); letter-spacing:.1em; margin-top:3px;}
+
+  .stats{display:flex; gap:6px; margin:10px 0 11px;}
+  .stat{flex:1 1 0; background:#f5f8ff; border-radius:12px; padding:6px 4px 5px; text-align:center; border:1px solid #eaf0fc;}
+  .stat b{display:block; font-size:18px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1.15;}
+  .stat span{display:block; font-size:10px; font-weight:800; color:var(--muted); letter-spacing:.06em;}
+  .stat.w b{color:var(--win-d);}
+  .stat.l b{color:var(--lose-d);}
+  .stat.d b{color:var(--draw-d);}
+
+  .taps{display:flex; gap:8px;}
+  .tap{flex:1 1 0; border:0; border-radius:16px; padding:13px 4px 11px; font-family:inherit; cursor:pointer;
+       color:#fff; font-size:16px; font-weight:900; letter-spacing:.04em; line-height:1.15;
+       display:flex; flex-direction:column; align-items:center; gap:1px;
+       transition:transform .09s ease, filter .12s ease; box-shadow:0 6px 14px rgba(16,32,70,.12);}
+  .tap small{font-size:10px; font-weight:800; opacity:.85; letter-spacing:.06em;}
+  .tap:active{transform:scale(.965); filter:brightness(.96);}
+  .tap.w{background:linear-gradient(180deg,#1ec98d,var(--win-d)); box-shadow:0 6px 14px rgba(16,185,129,.28);}
+  .tap.l{background:linear-gradient(180deg,#ff6d78,var(--lose-d)); box-shadow:0 6px 14px rgba(255,90,103,.26);}
+  .tap.d{background:linear-gradient(180deg,#9dabc4,var(--draw-d)); box-shadow:0 6px 14px rgba(138,154,182,.26);}
+
+  .deck-foot{display:flex; justify-content:flex-end; gap:2px; margin-top:9px;}
+  .deck-foot button{border:0; background:transparent; color:var(--muted); font-family:inherit; font-size:11.5px;
+        font-weight:800; padding:7px 9px; border-radius:10px; cursor:pointer; letter-spacing:.02em;}
+  .deck-foot button:active{background:#f2f6ff; color:var(--ink2);}
+  .deck-foot button.del{color:#e07a83;}
+
+  .empty{margin-top:14px; background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:26px 20px;
+         text-align:center; color:var(--ink2); font-size:13.5px; line-height:1.75;}
+  .empty b{display:block; font-size:15px; color:var(--ink); margin-bottom:6px;}
+  .empty .ex{display:inline-block; margin-top:10px; font-size:12px; color:var(--muted); background:#f4f8ff;
+         border-radius:10px; padding:6px 10px;}
+
+  .footnote{margin-top:18px; text-align:center; font-size:11px; color:var(--muted); line-height:1.7;}
+  .footnote b{color:var(--ink2);}
+
+  /* toast */
+  .toast{position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom)); transform:translate(-50%,20px);
+         background:rgba(14,27,58,.92); color:#fff; font-size:12.5px; font-weight:700; padding:10px 16px; border-radius:999px;
+         opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease; z-index:60; max-width:88vw; text-align:center;}
+  .toast.show{opacity:1; transform:translate(-50%,0);}
+
+  /* modal */
+  .backdrop{position:fixed; inset:0; background:rgba(10,20,45,.42); display:flex; align-items:center; justify-content:center;
+            padding:22px; z-index:70; animation:fadein .15s ease;}
+  .backdrop[hidden]{display:none;}
+  @keyframes fadein{from{opacity:0;} to{opacity:1;}}
+  .modal{background:#fff; border-radius:22px; padding:20px 18px 16px; width:100%; max-width:360px; box-shadow:0 20px 50px rgba(10,20,45,.28);
+         animation:mup .18s ease;}
+  @keyframes mup{from{transform:translateY(10px) scale(.98); opacity:.6;} to{transform:none; opacity:1;}}
+  .modal h2{font-size:16px; margin:0 0 8px; letter-spacing:.01em;}
+  .modal p{font-size:13px; color:var(--ink2); margin:0 0 12px; line-height:1.65;}
+  .modal input{width:100%; border:1px solid var(--line); border-radius:14px; padding:13px; font-size:16px; font-family:inherit;
+        outline:none; margin-bottom:12px; color:var(--ink);}
+  .modal input:focus{border-color:var(--blue); box-shadow:0 0 0 3px rgba(43,108,246,.15);}
+  .mbtns{display:flex; gap:8px;}
+  .mbtns button{flex:1 1 0; border:0; border-radius:14px; padding:13px; font-family:inherit; font-size:14.5px; font-weight:900; cursor:pointer;
+        transition:transform .1s ease;}
+  .mbtns button:active{transform:scale(.98);}
+  .mbtns .cancel{background:#f1f5fc; color:var(--ink2);}
+  .mbtns .ok{background:linear-gradient(135deg,var(--blue),#5a94ff); color:#fff; box-shadow:0 8px 18px rgba(43,108,246,.26);}
+  .mbtns .ok.danger{background:linear-gradient(135deg,#ff5a67,#e6404e); box-shadow:0 8px 18px rgba(230,63,77,.26);}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="head-in">
+    <div class="logo">
+      <h1><span class="ball" aria-hidden="true"></span>ポケポケ勝率カウンター</h1>
+      <p class="sub">勝ち・負け・分をワンタップで記録</p>
+    </div>
+    <button class="undo" id="undoBtn" type="button" disabled>↩ 1つ戻す</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="summary" aria-label="全デッキ合計">
+    <div class="sum-top">
+      <span class="sum-title">全デッキ合計</span>
+      <span class="sum-decks" id="sumDecks">0デッキ</span>
+    </div>
+    <div class="sum-body">
+      <div>
+        <div class="sum-games"><b id="sumGames">0</b><span>戦</span></div>
+        <div class="sum-split">
+          <i id="sumW">0勝</i><i id="sumL">0敗</i><i id="sumD">0分</i>
+        </div>
+      </div>
+      <div class="sum-rate">
+        <span class="l">通算勝率</span>
+        <span class="v"><span id="sumRate">--</span><small>%</small></span>
+      </div>
+    </div>
+  </section>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="deckName" type="text" placeholder="デッキ名を入力（例：リザードンex）" maxlength="24" enterkeyhint="done" aria-label="デッキ名">
+    <button type="submit">＋ 追加</button>
+  </form>
+
+  <section class="list" id="list" aria-live="polite"></section>
+
+  <p class="footnote">データはこの端末の<b>ブラウザ内にだけ</b>保存されます（サーバー送信なし）。<br>ホーム画面に追加するとアプリのように使えます。</p>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="backdrop" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle"></h2>
+    <p id="modalMsg"></p>
+    <input id="modalInput" type="text" maxlength="24" hidden aria-label="デッキ名">
+    <div class="mbtns">
+      <button class="cancel" id="modalCancel" type="button">キャンセル</button>
+      <button class="ok" id="modalOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var STORAGE_KEY = 'pokepoke-winrate-v1';
+  var NAME_MAX = 24;
+  var UNDO_MAX = 50;
+
+  var state = { decks: [], undo: [] };
+
+  /* ---------- storage ---------- */
+  function num(v){ v = parseInt(v, 10); return isFinite(v) && v > 0 ? v : 0; }
+  function uid(){ return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return;
+      var data = JSON.parse(raw);
+      if(!data || !Array.isArray(data.decks)) return;
+      state.decks = data.decks.filter(function(d){
+        return d && typeof d.name === 'string' && d.name.trim() !== '';
+      }).map(function(d){
+        return {
+          id: (typeof d.id === 'string' && d.id) ? d.id : uid(),
+          name: String(d.name).slice(0, NAME_MAX),
+          w: num(d.w), l: num(d.l), d: num(d.d)
+        };
+      });
+    }catch(e){ /* storage unavailable: keep working in memory */ }
+  }
+
+  function save(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, decks: state.decks }));
+    }catch(e){ /* ignore quota / private mode */ }
+  }
+
+  /* ---------- helpers ---------- */
+  function games(deck){ return deck.w + deck.l + deck.d; }
+  function rate(w, g){ return g > 0 ? (w / g * 100) : null; }
+  function rateText(w, g){ var r = rate(w, g); return r === null ? '--' : r.toFixed(1); }
+  function rateClass(w, g){ var r = rate(w, g); if(r === null) return ''; return r >= 50 ? '' : (r >= 40 ? 'mid' : 'low'); }
+  function findDeck(id){
+    for(var i = 0; i < state.decks.length; i++){ if(state.decks[i].id === id) return state.decks[i]; }
+    return null;
+  }
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function totals(){
+    var t = { games:0, w:0, l:0, d:0 };
+    state.decks.forEach(function(deck){
+      t.w += deck.w; t.l += deck.l; t.d += deck.d;
+    });
+    t.games = t.w + t.l + t.d;
+    return t;
+  }
+  function buzz(ms){
+    if(navigator.vibrate){ try{ navigator.vibrate(ms || 10); }catch(e){} }
+  }
+
+  /* ---------- actions ---------- */
+  var KIND_LABEL = { w:'勝ち', l:'負け', d:'引き分け' };
+
+  function addDeck(name){
+    name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+    if(!name) return null;
+    var deck = { id: uid(), name: name, w:0, l:0, d:0 };
+    state.decks.push(deck);
+    save(); render();
+    return deck;
+  }
+
+  function renameDeck(id, name){
+    name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+    var deck = findDeck(id);
+    if(!deck || !name) return false;
+    deck.name = name;
+    save(); render();
+    return true;
+  }
+
+  function deleteDeck(id){
+    var i = state.decks.findIndex(function(d){ return d.id === id; });
+    if(i < 0) return false;
+    state.decks.splice(i, 1);
+    state.undo = state.undo.filter(function(a){ return a.deckId !== id; });
+    save(); render();
+    return true;
+  }
+
+  function resetDeck(id){
+    var deck = findDeck(id);
+    if(!deck) return false;
+    state.undo.push({ type:'reset', deckId:id, prev:{ w:deck.w, l:deck.l, d:deck.d } });
+    trimUndo();
+    deck.w = 0; deck.l = 0; deck.d = 0;
+    save(); render();
+    return true;
+  }
+
+  function count(id, kind){
+    var deck = findDeck(id);
+    if(!deck || !KIND_LABEL[kind]) return false;
+    deck[kind] += 1;
+    state.undo.push({ type:'count', deckId:id, kind:kind });
+    trimUndo();
+    save(); render();
+    buzz(12);
+    return true;
+  }
+
+  function trimUndo(){ if(state.undo.length > UNDO_MAX) state.undo.shift(); }
+
+  function undoLast(){
+    var action = state.undo.pop();
+    if(!action) return null;
+    var deck = findDeck(action.deckId);
+    var label = '操作を取り消しました';
+    if(action.type === 'count'){
+      if(deck && deck[action.kind] > 0){ deck[action.kind] -= 1; }
+      if(deck){ label = '「' + deck.name + '」の' + KIND_LABEL[action.kind] + 'を取り消しました'; }
+    }else if(action.type === 'reset'){
+      if(deck && action.prev){ deck.w = action.prev.w; deck.l = action.prev.l; deck.d = action.prev.d; }
+      if(deck){ label = '「' + deck.name + '」のリセットを取り消しました'; }
+    }
+    save(); render();
+    return label;
+  }
+
+  /* ---------- rendering ---------- */
+  var el = {
+    list: document.getElementById('list'),
+    sumDecks: document.getElementById('sumDecks'),
+    sumGames: document.getElementById('sumGames'),
+    sumW: document.getElementById('sumW'),
+    sumL: document.getElementById('sumL'),
+    sumD: document.getElementById('sumD'),
+    sumRate: document.getElementById('sumRate'),
+    undoBtn: document.getElementById('undoBtn'),
+    addForm: document.getElementById('addForm'),
+    deckName: document.getElementById('deckName'),
+    toast: document.getElementById('toast'),
+    modal: document.getElementById('modal'),
+    modalTitle: document.getElementById('modalTitle'),
+    modalMsg: document.getElementById('modalMsg'),
+    modalInput: document.getElementById('modalInput'),
+    modalOk: document.getElementById('modalOk'),
+    modalCancel: document.getElementById('modalCancel')
+  };
+
+  function render(){
+    var t = totals();
+    el.sumGames.textContent = String(t.games);
+    el.sumW.textContent = t.w + '勝';
+    el.sumL.textContent = t.l + '敗';
+    el.sumD.textContent = t.d + '分';
+    el.sumRate.textContent = rateText(t.w, t.games);
+    el.sumDecks.textContent = state.decks.length + 'デッキ';
+    el.undoBtn.disabled = state.undo.length === 0;
+
+    if(state.decks.length === 0){
+      el.list.innerHTML =
+        '<div class="empty"><b>まだデッキがありません</b>' +
+        '上にデッキ名を入れて「＋ 追加」してください。<br>' +
+        '対戦したら「勝ち／負け／引き分け」を押すだけで勝率が出ます。' +
+        '<span class="ex">例：リザードンex ／ ミュウツーex ／ ゲッコウガ</span></div>';
+      return;
+    }
+
+    var html = '';
+    state.decks.forEach(function(deck){
+      var g = games(deck);
+      html +=
+        '<article class="deck" data-id="' + deck.id + '">' +
+          '<div class="deck-top">' +
+            '<div class="deck-name">' + esc(deck.name) + '</div>' +
+            '<div class="deck-rate">' +
+              '<span class="v ' + rateClass(deck.w, g) + '">' + rateText(deck.w, g) + '<small>%</small></span>' +
+              '<span class="l">勝率</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="stats">' +
+            '<div class="stat"><b>' + g + '</b><span>戦</span></div>' +
+            '<div class="stat w"><b>' + deck.w + '</b><span>勝</span></div>' +
+            '<div class="stat l"><b>' + deck.l + '</b><span>敗</span></div>' +
+            '<div class="stat d"><b>' + deck.d + '</b><span>分</span></div>' +
+          '</div>' +
+          '<div class="taps">' +
+            '<button class="tap w" type="button" data-act="w" aria-label="' + esc(deck.name) + ' 勝ちを1つ追加">勝ち<small>＋1</small></button>' +
+            '<button class="tap l" type="button" data-act="l" aria-label="' + esc(deck.name) + ' 負けを1つ追加">負け<small>＋1</small></button>' +
+            '<button class="tap d" type="button" data-act="d" aria-label="' + esc(deck.name) + ' 引き分けを1つ追加">引き分け<small>＋1</small></button>' +
+          '</div>' +
+          '<div class="deck-foot">' +
+            '<button type="button" data-act="rename">名前変更</button>' +
+            '<button type="button" data-act="reset">リセット</button>' +
+            '<button type="button" class="del" data-act="delete">削除</button>' +
+          '</div>' +
+        '</article>';
+    });
+    el.list.innerHTML = html;
+  }
+
+  var toastTimer = null;
+  function toast(msg){
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.toast.classList.remove('show'); }, 1800);
+  }
+
+  /* ---------- modal ---------- */
+  var modalHandler = null;
+
+  function closeModal(){
+    el.modal.hidden = true;
+    modalHandler = null;
+  }
+
+  function openModal(opts){
+    el.modalTitle.textContent = opts.title || '';
+    el.modalMsg.textContent = opts.message || '';
+    el.modalMsg.hidden = !opts.message;
+    if(opts.input){
+      el.modalInput.hidden = false;
+      el.modalInput.value = opts.value || '';
+      el.modalInput.placeholder = opts.placeholder || '';
+    }else{
+      el.modalInput.hidden = true;
+      el.modalInput.value = '';
+    }
+    el.modalOk.textContent = opts.okLabel || 'OK';
+    el.modalOk.classList.toggle('danger', !!opts.danger);
+    el.modalCancel.textContent = opts.cancelLabel || 'キャンセル';
+    modalHandler = opts.onOk || null;
+    el.modal.hidden = false;
+    if(opts.input){
+      setTimeout(function(){ el.modalInput.focus(); el.modalInput.select(); }, 50);
+    }
+  }
+
+  function confirmModal(){
+    if(!modalHandler) return;
+    var fn = modalHandler;
+    var value = el.modalInput.hidden ? null : el.modalInput.value;
+    fn(value);
+  }
+
+  el.modalOk.addEventListener('click', function(){ confirmModal(); });
+  el.modalCancel.addEventListener('click', closeModal);
+  el.modal.addEventListener('click', function(e){ if(e.target === el.modal) closeModal(); });
+  el.modalInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); confirmModal(); } });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && !el.modal.hidden) closeModal(); });
+
+  /* ---------- wiring ---------- */
+  el.addForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = el.deckName.value;
+    if(!name.trim()){
+      el.deckName.focus();
+      toast('デッキ名を入力してください');
+      return;
+    }
+    if(addDeck(name)){
+      el.deckName.value = '';
+      el.deckName.blur();
+      toast('デッキを追加しました');
+    }
+  });
+
+  el.list.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    var card = btn.closest('.deck');
+    if(!card) return;
+    var id = card.getAttribute('data-id');
+    var deck = findDeck(id);
+    if(!deck) return;
+    var act = btn.getAttribute('data-act');
+
+    if(act === 'w' || act === 'l' || act === 'd'){
+      count(id, act);
+      return;
+    }
+    if(act === 'rename'){
+      openModal({
+        title:'デッキ名を変更',
+        message:'',
+        input:true,
+        value:deck.name,
+        placeholder:'デッキ名',
+        okLabel:'保存',
+        onOk:function(value){
+          if(!value || !value.trim()){ return; }
+          renameDeck(id, value);
+          closeModal();
+          toast('名前を変更しました');
+        }
+      });
+      return;
+    }
+    if(act === 'reset'){
+      openModal({
+        title:'戦績をリセット',
+        message:'「' + deck.name + '」の 勝ち・負け・引き分け をすべて0に戻します。よろしいですか？',
+        okLabel:'リセット',
+        danger:true,
+        onOk:function(){
+          resetDeck(id);
+          closeModal();
+          toast('戦績をリセットしました（1つ戻すで取り消せます）');
+        }
+      });
+      return;
+    }
+    if(act === 'delete'){
+      openModal({
+        title:'デッキを削除',
+        message:'「' + deck.name + '」と、その戦績（' + games(deck) + '戦）を削除します。この操作は取り消せません。',
+        okLabel:'削除',
+        danger:true,
+        onOk:function(){
+          deleteDeck(id);
+          closeModal();
+          toast('デッキを削除しました');
+        }
+      });
+      return;
+    }
+  });
+
+  el.undoBtn.addEventListener('click', function(){
+    var label = undoLast();
+    if(label) toast(label);
+  });
+
+  /* ---------- init ---------- */
+  load();
+  render();
+
+  // テスト・デバッグ用（画面には影響しません）
+  window.__poke = {
+    state: state,
+    addDeck: addDeck,
+    count: count,
+    undoLast: undoLast,
+    totals: totals,
+    rate: rate,
+    rateText: rateText
+  };
+})();
+</script>
+</body>
+</html>
