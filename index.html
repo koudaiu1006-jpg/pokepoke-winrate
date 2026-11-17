@@ -175,6 +175,17 @@
   .mbtns .cancel{background:#f1f5fc; color:var(--ink2);}
   .mbtns .ok{background:linear-gradient(135deg,var(--blue),#5a94ff); color:#fff; box-shadow:0 8px 18px rgba(43,108,246,.26);}
   .mbtns .ok.danger{background:linear-gradient(135deg,#ff5a67,#e6404e); box-shadow:0 8px 18px rgba(230,63,77,.26);}
+
+  @media (max-width:360px){
+    .logo h1{font-size:15px;}
+    .undo{padding:8px 10px; font-size:12px;}
+    .sum-games b{font-size:34px;}
+    .deck-name{font-size:15.5px;}
+    .deck-rate .v{font-size:24px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important; transition:none !important;}
+  }
 </style>
 </head>
 <body>
