@@ -151,6 +151,25 @@
   .footnote{margin-top:18px; text-align:center; font-size:11px; color:var(--muted); line-height:1.7;}
   .footnote b{color:var(--ink2);}
 
+  /* sync bar */
+  .sync-bar{margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;
+            background:#fff; border:1px solid var(--line); border-radius:14px; padding:7px 12px;
+            font-size:12px; font-weight:700; color:var(--ink2); box-shadow:0 2px 6px rgba(16,32,70,.04);}
+  .sync-status{display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sync-status.ok{color:#0a9c6c;}
+  .sync-status.busy{color:var(--blue);}
+  .sync-status.err{color:var(--lose-d);}
+  .sync-btn{flex:0 0 auto; border:1px solid var(--line); background:#f5f8ff; color:var(--ink2);
+            border-radius:10px; padding:4px 10px; font-size:11.5px; font-weight:800; font-family:inherit; cursor:pointer;}
+  .sync-btn:active{transform:scale(.97);}
+  .sync-fields{display:flex; flex-direction:column; gap:8px; margin-bottom:12px;}
+  .sync-fields label{font-size:11.5px; font-weight:800; color:var(--ink2); display:block;}
+  .sync-fields input{margin-bottom:0; margin-top:4px; font-size:13.5px; padding:10px 12px;}
+  .sync-actions{display:flex; gap:6px; margin-bottom:10px;}
+  .sync-actions button{flex:1 1 0; border:1px solid var(--line); background:#f5f8ff; color:var(--ink2);
+                       border-radius:11px; padding:9px 6px; font-size:12px; font-weight:800; font-family:inherit; cursor:pointer;}
+  .sync-actions button:active{background:#e7effe;}
+
   /* toast */
   .toast{position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom)); transform:translate(-50%,20px);
          background:rgba(14,27,58,.92); color:#fff; font-size:12.5px; font-weight:700; padding:10px 16px; border-radius:999px;
@@ -204,6 +223,11 @@
 
 <main class="wrap">
 
+  <div class="sync-bar" id="syncBar">
+    <span class="sync-status" id="syncStatus">☁️ GitHub未連携</span>
+    <button class="sync-btn" id="syncCfgBtn" type="button">同期設定</button>
+  </div>
+
   <section class="summary" aria-label="全デッキ合計">
     <div class="sum-top">
       <span class="sum-title">全デッキ合計</span>
@@ -230,10 +254,33 @@
 
   <section class="list" id="list" aria-live="polite"></section>
 
-  <p class="footnote">データはこの端末の<b>ブラウザ内にだけ</b>保存されます（サーバー送信なし）。<br>ホーム画面に追加するとアプリのように使えます。</p>
+  <p class="footnote" id="footnoteText">データは端末のブラウザとGitHub Gistに保存されます。</p>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="backdrop" id="syncModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
+    <h2 id="syncModalTitle">☁️ GitHub自動同期</h2>
+    <p>Gist IDとトークンを設定すると、戦績が自動でGitHubに保存され、別ブラウザやホーム画面からも消えずに復元できます。</p>
+    <div class="sync-fields">
+      <label>Gist ID
+        <input id="syncGistInput" type="text" placeholder="例: 8c1a8026..." autocomplete="off">
+      </label>
+      <label>GitHub Token (Gist権限)
+        <input id="syncTokenInput" type="password" placeholder="github_pat_..." autocomplete="off">
+      </label>
+    </div>
+    <div class="sync-actions">
+      <button type="button" id="syncPullBtn">⬇️ GitHubから復元</button>
+      <button type="button" id="syncPushBtn">⬆️ GitHubへ保存</button>
+    </div>
+    <div class="mbtns">
+      <button class="cancel" id="syncCloseBtn" type="button">閉じる</button>
+      <button class="ok" id="syncSaveBtn" type="button">設定を保存</button>
+    </div>
+  </div>
+</div>
 
 <div class="backdrop" id="modal" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -252,14 +299,33 @@
   'use strict';
 
   var STORAGE_KEY = 'pokepoke-winrate-v1';
+  var SYNC_KEY = 'pokepoke-winrate-sync-v1';
+  var GIST_FILE = 'pokepoke-winrate.json';
   var NAME_MAX = 24;
   var UNDO_MAX = 50;
 
-  var state = { decks: [], undo: [] };
+  var state = { decks: [], undo: [], updatedAt: 0 };
+  var syncCfg = { gistId: '', token: '' };
+  var pushTimer = null;
+  var pushing = false;
+  var pushDirty = false;
 
-  /* ---------- storage ---------- */
+  /* ---------- storage & sync ---------- */
   function num(v){ v = parseInt(v, 10); return isFinite(v) && v > 0 ? v : 0; }
   function uid(){ return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function normalizeDecks(arr){
+    if(!Array.isArray(arr)) return [];
+    return arr.filter(function(d){
+      return d && typeof d.name === 'string' && d.name.trim() !== '';
+    }).map(function(d){
+      return {
+        id: (typeof d.id === 'string' && d.id) ? d.id : uid(),
+        name: String(d.name).slice(0, NAME_MAX),
+        w: num(d.w), l: num(d.l), d: num(d.d)
+      };
+    });
+  }
 
   function load(){
     try{
@@ -267,22 +333,179 @@
       if(!raw) return;
       var data = JSON.parse(raw);
       if(!data || !Array.isArray(data.decks)) return;
-      state.decks = data.decks.filter(function(d){
-        return d && typeof d.name === 'string' && d.name.trim() !== '';
-      }).map(function(d){
-        return {
-          id: (typeof d.id === 'string' && d.id) ? d.id : uid(),
-          name: String(d.name).slice(0, NAME_MAX),
-          w: num(d.w), l: num(d.l), d: num(d.d)
-        };
-      });
+      state.decks = normalizeDecks(data.decks);
+      state.updatedAt = num(data.updatedAt);
     }catch(e){ /* storage unavailable: keep working in memory */ }
   }
 
-  function save(){
+  function saveLocalOnly(){
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, decks: state.decks }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        v: 1,
+        updatedAt: state.updatedAt,
+        decks: state.decks
+      }));
     }catch(e){ /* ignore quota / private mode */ }
+  }
+
+  function save(){
+    state.updatedAt = Date.now();
+    saveLocalOnly();
+    schedulePush();
+  }
+
+  function setSyncStatus(kind, text){
+    if(!el.syncStatus) return;
+    el.syncStatus.className = 'sync-status' + (kind ? ' ' + kind : '');
+    el.syncStatus.textContent = text;
+  }
+
+  function saveSyncConfig(){
+    try{
+      if(syncCfg.gistId && syncCfg.token){
+        localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      }else{
+        localStorage.removeItem(SYNC_KEY);
+      }
+    }catch(e){}
+    if(syncCfg.gistId && syncCfg.token){
+      var h = '#gist=' + encodeURIComponent(syncCfg.gistId) + '&token=' + encodeURIComponent(syncCfg.token);
+      if(location.hash !== h){
+        try{ history.replaceState(null, '', h); }catch(e){}
+      }
+    }
+  }
+
+  function initSyncConfig(){
+    var hash = (location.hash || '').replace(/^#/, '');
+    if(hash){
+      var params = {};
+      hash.split('&').forEach(function(part){
+        var idx = part.indexOf('=');
+        if(idx > 0){
+          params[decodeURIComponent(part.slice(0, idx))] = decodeURIComponent(part.slice(idx + 1));
+        }
+      });
+      if(params.gist && params.token){
+        syncCfg.gistId = params.gist.trim();
+        syncCfg.token = params.token.trim();
+        saveSyncConfig();
+        return;
+      }
+    }
+    try{
+      var raw = localStorage.getItem(SYNC_KEY);
+      if(raw){
+        var c = JSON.parse(raw);
+        if(c && c.gistId && c.token){
+          syncCfg.gistId = String(c.gistId).trim();
+          syncCfg.token = String(c.token).trim();
+          saveSyncConfig();
+        }
+      }
+    }catch(e){}
+  }
+
+  function hasSync(){ return !!(syncCfg.gistId && syncCfg.token); }
+
+  function pullSync(silent){
+    if(!hasSync()){
+      setSyncStatus('', '☁️ GitHub未連携');
+      return Promise.resolve(false);
+    }
+    setSyncStatus('busy', '☁️ GitHubから読み込み中…');
+    return fetch('https://api.github.com/gists/' + encodeURIComponent(syncCfg.gistId), {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Authorization': 'Bearer ' + syncCfg.token,
+        'Accept': 'application/vnd.github+json'
+      }
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(gist){
+      var file = gist && gist.files && gist.files[GIST_FILE];
+      if(!file || !file.content){
+        if(state.decks.length > 0) return pushSync(true);
+        setSyncStatus('ok', '☁️ GitHub同期済み');
+        return true;
+      }
+      var remote = JSON.parse(file.content);
+      var rDecks = normalizeDecks(remote && remote.decks);
+      var rTime = num(remote && remote.updatedAt);
+
+      if(rDecks.length > 0 && (state.decks.length === 0 || rTime > state.updatedAt || !silent)){
+        state.decks = rDecks;
+        state.updatedAt = rTime || Date.now();
+        state.undo = [];
+        saveLocalOnly();
+        render();
+        setSyncStatus('ok', '☁️ GitHubから復元済み');
+        if(!silent) toast('GitHubから戦績を復元しました');
+      }else if(rDecks.length === 0 && state.decks.length > 0){
+        return pushSync(true);
+      }else{
+        setSyncStatus('ok', '☁️ GitHub同期済み');
+      }
+      return true;
+    }).catch(function(){
+      setSyncStatus('err', '⚠️ 同期エラー（同期設定で確認）');
+      if(!silent) toast('GitHubからの読み込みに失敗しました');
+      return false;
+    });
+  }
+
+  function pushSync(silent){
+    if(!hasSync()) return Promise.resolve(false);
+    if(pushing){
+      pushDirty = true;
+      return Promise.resolve(false);
+    }
+    pushing = true;
+    pushDirty = false;
+    setSyncStatus('busy', '☁️ GitHubへ保存中…');
+
+    var body = { files: {} };
+    body.files[GIST_FILE] = {
+      content: JSON.stringify({
+        v: 1,
+        updatedAt: state.updatedAt || Date.now(),
+        decks: state.decks
+      }, null, 2)
+    };
+
+    return fetch('https://api.github.com/gists/' + encodeURIComponent(syncCfg.gistId), {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'Bearer ' + syncCfg.token,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      setSyncStatus('ok', '☁️ GitHub保存済み');
+      if(!silent) toast('GitHubへ保存しました');
+      return true;
+    }).catch(function(){
+      setSyncStatus('err', '⚠️ 保存失敗（同期設定で再試行）');
+      if(!silent) toast('GitHubへの保存に失敗しました');
+      return false;
+    }).finally(function(){
+      pushing = false;
+      if(pushDirty){
+        pushDirty = false;
+        pushSync(true);
+      }
+    });
+  }
+
+  function schedulePush(){
+    if(!hasSync()) return;
+    setSyncStatus('busy', '☁️ GitHubへ保存中…');
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(function(){ pushSync(true); }, 450);
   }
 
   /* ---------- helpers ---------- */
@@ -398,7 +621,16 @@
     modalMsg: document.getElementById('modalMsg'),
     modalInput: document.getElementById('modalInput'),
     modalOk: document.getElementById('modalOk'),
-    modalCancel: document.getElementById('modalCancel')
+    modalCancel: document.getElementById('modalCancel'),
+    syncStatus: document.getElementById('syncStatus'),
+    syncCfgBtn: document.getElementById('syncCfgBtn'),
+    syncModal: document.getElementById('syncModal'),
+    syncGistInput: document.getElementById('syncGistInput'),
+    syncTokenInput: document.getElementById('syncTokenInput'),
+    syncPullBtn: document.getElementById('syncPullBtn'),
+    syncPushBtn: document.getElementById('syncPushBtn'),
+    syncCloseBtn: document.getElementById('syncCloseBtn'),
+    syncSaveBtn: document.getElementById('syncSaveBtn')
   };
 
   function render(){
@@ -587,9 +819,63 @@
     if(label) toast(label);
   });
 
+  function openSyncModal(){
+    el.syncGistInput.value = syncCfg.gistId || '';
+    el.syncTokenInput.value = syncCfg.token || '';
+    el.syncModal.hidden = false;
+  }
+  function closeSyncModal(){ el.syncModal.hidden = true; }
+
+  el.syncCfgBtn.addEventListener('click', openSyncModal);
+  el.syncStatus.addEventListener('click', function(){
+    if(hasSync() && el.syncStatus.classList.contains('err')){
+      pushSync(false);
+    }else{
+      openSyncModal();
+    }
+  });
+  el.syncCloseBtn.addEventListener('click', closeSyncModal);
+  el.syncModal.addEventListener('click', function(e){ if(e.target === el.syncModal) closeSyncModal(); });
+  el.syncSaveBtn.addEventListener('click', function(){
+    syncCfg.gistId = el.syncGistInput.value.trim();
+    syncCfg.token = el.syncTokenInput.value.trim();
+    saveSyncConfig();
+    closeSyncModal();
+    if(hasSync()){
+      pullSync(false);
+    }else{
+      setSyncStatus('', '☁️ GitHub未連携');
+      toast('連携設定を解除しました');
+    }
+  });
+  el.syncPullBtn.addEventListener('click', function(){
+    syncCfg.gistId = el.syncGistInput.value.trim();
+    syncCfg.token = el.syncTokenInput.value.trim();
+    if(!hasSync()){ toast('Gist IDとTokenを入力してください'); return; }
+    saveSyncConfig();
+    closeSyncModal();
+    pullSync(false);
+  });
+  el.syncPushBtn.addEventListener('click', function(){
+    syncCfg.gistId = el.syncGistInput.value.trim();
+    syncCfg.token = el.syncTokenInput.value.trim();
+    if(!hasSync()){ toast('Gist IDとTokenを入力してください'); return; }
+    saveSyncConfig();
+    closeSyncModal();
+    state.updatedAt = Date.now();
+    saveLocalOnly();
+    pushSync(false);
+  });
+
   /* ---------- init ---------- */
+  initSyncConfig();
   load();
   render();
+  if(hasSync()){
+    pullSync(true);
+  }else{
+    setSyncStatus('', '☁️ GitHub未連携');
+  }
 
   // テスト・デバッグ用（画面には影響しません）
   window.__poke = {
